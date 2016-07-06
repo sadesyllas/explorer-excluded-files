@@ -1,0 +1,62 @@
+{
+	"name": "explorer-excluded-files",
+	"displayName": "explorer-excluded-files",
+	"description": "Exclude files from the Visual Studio Code explorer",
+	"version": "0.1.0",
+	"publisher": "sadesyllas",
+	"engines": {
+		"vscode": "^1.0.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"bugs": {
+		"url": "https://github.com/sadesyllas/explorer-excluded-files/issues"
+	},
+	"homepage": "https://github.com/sadesyllas/explorer-excluded-files",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sadesyllas/explorer-excluded-files.git"
+	},
+	"activationEvents": [
+		"*"
+	],
+	"main": "./out/src/extension",
+	"contributes": {
+		"configuration": {
+			"type": "object",
+			"title": "Explorer Excluded Files configuration",
+			"properties": {
+				"explorerExcludedFiles.patterns": {
+					"type": "array",
+					"default": [ "file://.gitignore" ],
+					"description": "The file patterns to exclude from the explorer"
+				},
+				"explorerExcludedFiles.show": {
+					"type": "boolean",
+					"default": false,
+					"description": "Whether or not to show the explorer excluded files"
+				}
+			}
+		},
+		"commands": [
+			{
+				"command": "extension.showExplorerExcludedFiles",
+				"title": "Show Explorer Excluded Files"
+			},
+			{
+				"command": "extension.hideExplorerExcludedFiles",
+				"title": "Hide Explorer Excluded Files"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "node ./node_modules/vscode/bin/compile",
+		"compile": "node ./node_modules/vscode/bin/compile -watch -p ./",
+		"postinstall": "node ./node_modules/vscode/bin/install"
+	},
+	"devDependencies": {
+		"typescript": "^1.8.5",
+		"vscode": "^0.11.0"
+	}
+}
