@@ -42,7 +42,11 @@ function sanitizeJSONString(jsonString) {
 	if (!jsonString) {
 		return jsonString;
 	}
-	return jsonString.replace(/^[^{]+|[^}]+$/, '');
+	return jsonString.replace(/^[^{]+|[^}]+$/, '').replace(/(.+?[^:])\/\/.+$/gm, '$1');
+}
+
+function readJSON(filepath) {
+	return sanitizeJSONString(readUTF8(filepath));
 }
 
 function JSONStringify(json) {
@@ -59,7 +63,7 @@ function configurationsAreIdentical(userConfiguration1, userConfiguration2) {
 
 function readUserConfiguration() {
 	const userConfigurationFilePath = getUserConfigurationFilePath();
-	const userConfigurationText = sanitizeJSONString(readUTF8(userConfigurationFilePath));
+	const userConfigurationText = readJSON(userConfigurationFilePath);
 	const userConfiguration = JSON.parse(userConfigurationText);
 	return {
 		text: userConfigurationText,
@@ -97,7 +101,7 @@ function readWorkspaceConfiguration() {
 		return emptyConfiguration;
 	}
 
-	const workspaceConfigurationText = sanitizeJSONString(readUTF8(workspaceConfigurationFilePath));
+	const workspaceConfigurationText = readJSON(workspaceConfigurationFilePath);
 
 	return {
 		text: workspaceConfigurationText,
