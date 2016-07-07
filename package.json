@@ -2,7 +2,7 @@
 	"name": "explorer-excluded-files",
 	"displayName": "explorer-excluded-files",
 	"description": "Exclude files from the Visual Studio Code explorer",
-	"version": "0.1.3",
+	"version": "0.1.4",
 	"publisher": "sadesyllas",
 	"engines": {
 		"vscode": "^1.0.0"

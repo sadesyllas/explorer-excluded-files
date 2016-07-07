@@ -217,10 +217,11 @@ function patchUserConfiguration() {
 	const rootPath = getRootPath();
 
 	const { text: userConfigurationText, json: userConfiguration } = readUserConfiguration();
-	const explorerExcludedFilesPatternsSetting = vscode.workspace.getConfiguration(explorerExcludedFilesKey).get('patterns');
+	let explorerExcludedFilesPatterns = <string[]>vscode.workspace.getConfiguration(explorerExcludedFilesKey).get('patterns');
 
-	if (!explorerExcludedFilesPatternsSetting) {
+	if (!explorerExcludedFilesPatterns) {
 		userConfiguration[explorerExcludedFilesPatternsKey] = [ 'file://.gitignore' ];
+		explorerExcludedFilesPatterns = userConfiguration[explorerExcludedFilesPatternsKey];
 	}
 
 	if (!configurationsAreIdentical(userConfiguration, JSON.parse(userConfigurationText))) {
@@ -234,7 +235,7 @@ function patchUserConfiguration() {
 		return;
 	}
 
-	patchWorkspaceConfiguration(userConfiguration[explorerExcludedFilesPatternsKey]);
+	patchWorkspaceConfiguration(explorerExcludedFilesPatterns);
 
 	restart();
 }

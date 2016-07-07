@@ -1,3 +1,5 @@
+v0.1.4 - fix(app): fix extension initialization workflow
+
 v0.1.3 - chore(build): refactor developement file
 
 v0.1.2 - fix(app): use lodash for object equality checks
