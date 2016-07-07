@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as _ from 'lodash';
 
 const filesExcludeKey = 'files.exclude';
 const explorerExcludedFilesKey = 'explorerExcludedFiles';
@@ -53,12 +54,8 @@ function JSONStringify(json) {
 	return JSON.stringify(json, null, 2);
 }
 
-function configurationsAreIdentical(userConfiguration1, userConfiguration2) {
-	let userConfiguration1TextProxy = JSONStringify(userConfiguration1).split('');
-	userConfiguration1TextProxy.sort();
-	let userConfiguration2TextProxy = JSONStringify(userConfiguration2).split('');
-	userConfiguration2TextProxy.sort();
-	return userConfiguration1TextProxy === userConfiguration2TextProxy;
+function configurationsAreIdentical(configuration1, configuration2) {
+	return _.isEqual(configuration1, configuration2);
 }
 
 function readUserConfiguration() {

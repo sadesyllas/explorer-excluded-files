@@ -2,7 +2,7 @@
 	"name": "explorer-excluded-files",
 	"displayName": "explorer-excluded-files",
 	"description": "Exclude files from the Visual Studio Code explorer",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"publisher": "sadesyllas",
 	"engines": {
 		"vscode": "^1.0.0"
@@ -29,7 +29,9 @@
 			"properties": {
 				"explorerExcludedFiles.patterns": {
 					"type": "array",
-					"default": [ "file://.gitignore" ],
+					"default": [
+						"file://.gitignore"
+					],
 					"description": "The file patterns to exclude from the explorer"
 				},
 				"explorerExcludedFiles.show": {
@@ -58,5 +60,8 @@
 	"devDependencies": {
 		"typescript": "^1.8.5",
 		"vscode": "^0.11.0"
+	},
+	"dependencies": {
+		"lodash": "^4.13.1"
 	}
 }
