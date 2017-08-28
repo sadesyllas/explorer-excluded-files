@@ -27,10 +27,6 @@ function getUserConfigurationFilePath() {
 	}
 }
 
-function getRootPath() {
-	return vscode.workspace.rootPath;
-}
-
 function readUTF8(filePath) {
 	return fs.readFileSync(filePath, { encoding: 'utf8' });
 }
@@ -74,23 +70,37 @@ function writeUserConfiguration(userConfiguration) {
 }
 
 function start() {
-	patchUserConfiguration();
+	if (!vscode.workspace.workspaceFolders || !vscode.workspace.workspaceFolders.length) {
+		restart();
+		return;
+	}
+
+	const promises = <Promise<any>[]>[];
+
+	vscode.workspace.workspaceFolders.forEach(workspaceFolder => {
+		promises.push(new Promise((resolve) => {
+			patchUserConfiguration(workspaceFolder, resolve);
+		}));
+	});
+
+	Promise.all(promises).then(() => restart());
 }
 
 function restart() {
-	setTimeout(patchUserConfiguration, cycleDelay);
+	setTimeout(start, cycleDelay);
 }
 
-function readWorkspaceConfiguration() {
+function readWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder) {
 	const emptyConfiguration = {
 		text: '{}',
 		json: {},
 	};
-	const rootPath = getRootPath();
 
-	if (!rootPath) {
+	if (!workspaceFolder || !workspaceFolder.uri) {
 		return emptyConfiguration;
 	}
+
+	const rootPath = workspaceFolder.uri.fsPath;
 
 	const workspaceConfigurationFilePath = path.join(rootPath, '.vscode', 'settings.json');
 
@@ -106,8 +116,12 @@ function readWorkspaceConfiguration() {
 	};
 }
 
-function writeWorkspaceConfiguration(workspaceConfiguration) {
-	const rootPath = getRootPath();
+function writeWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder, workspaceConfiguration) {
+	if (!workspaceFolder || !workspaceFolder.uri) {
+		return;
+	}
+
+	const rootPath = workspaceFolder.uri.fsPath;
 
 	if (!rootPath) {
 		return;
@@ -122,14 +136,18 @@ function writeWorkspaceConfiguration(workspaceConfiguration) {
 	writeUTF8(path.join(workspaceVSCodeDirectoryPath, 'settings.json'), JSONStringify(workspaceConfiguration));
 }
 
-function clearWorkspaceConfiguration() {
-	const rootPath = getRootPath();
+function clearWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder) {
+	if (!workspaceFolder || !workspaceFolder.uri) {
+		return;
+	}
+
+	const rootPath = workspaceFolder.uri.fsPath;
 
 	if (!rootPath) {
 		return;
 	}
 
-	const { text: workspaceConfigurationText, json: workspaceConfiguration } = readWorkspaceConfiguration();
+	const { text: workspaceConfigurationText, json: workspaceConfiguration } = readWorkspaceConfiguration(workspaceFolder);
 
 	Object.keys(workspaceConfiguration[filesExcludeKey] || {}).forEach(e => {
 		if (workspaceConfiguration[filesExcludeKey][e] === 'explorerExcludedFiles') {
@@ -143,7 +161,7 @@ function clearWorkspaceConfiguration() {
 
 	if (workspaceConfiguration[explorerExcludedFilesShowKey]) {
 		if (!configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
-			writeWorkspaceConfiguration(workspaceConfiguration);
+			writeWorkspaceConfiguration(workspaceFolder, workspaceConfiguration);
 		}
 
 		return;
@@ -164,25 +182,33 @@ function clearWorkspaceConfiguration() {
 			fs.unlinkSync(path.join(workspaceVSCodeDirectoryPath, 'settings.json'));
 			fs.rmdirSync(workspaceVSCodeDirectoryPath);
 		}
-		
+
 		return;
 	}
 
 	if (!configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
-		writeWorkspaceConfiguration(workspaceConfiguration);
+		writeWorkspaceConfiguration(workspaceFolder, workspaceConfiguration);
 	}
 }
 
-function patchWorkspaceConfiguration(patterns: string[]) {
+function clearWorkspaceConfigurations() {
+	(vscode.workspace.workspaceFolders || []).forEach(workspaceFolder => clearWorkspaceConfiguration(workspaceFolder));
+}
+
+function patchWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder, patterns: string[]) {
 	patterns = patterns || [];
 
-	const rootPath = getRootPath();
+	if (!workspaceFolder || !workspaceFolder.uri) {
+		return;
+	}
+
+	const rootPath = workspaceFolder.uri.fsPath;
 
 	if (!rootPath) {
 		return;
 	}
 
-	const { text: workspaceConfigurationText, json: workspaceConfiguration } = readWorkspaceConfiguration();
+	const { text: workspaceConfigurationText, json: workspaceConfiguration } = readWorkspaceConfiguration(workspaceFolder);
 
 	if (workspaceConfiguration[explorerExcludedFilesShowKey]) {
 		return;
@@ -209,15 +235,20 @@ function patchWorkspaceConfiguration(patterns: string[]) {
 	});
 
 	if (!configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
-		writeWorkspaceConfiguration(workspaceConfiguration);
+		writeWorkspaceConfiguration(workspaceFolder, workspaceConfiguration);
 	}
 }
 
-function patchUserConfiguration() {
-	const rootPath = getRootPath();
+function patchUserConfiguration(workspaceFolder: vscode.WorkspaceFolder, promiseResolver: (value?: any) => void) {
+	if (!workspaceFolder || !workspaceFolder.uri) {
+		return;
+	}
+
+	const rootPath = workspaceFolder.uri.fsPath;
 
 	const { text: userConfigurationText, json: userConfiguration } = readUserConfiguration();
-	let explorerExcludedFilesPatterns = <string[]>vscode.workspace.getConfiguration(explorerExcludedFilesKey).get('patterns');
+	let explorerExcludedFilesPatterns =
+		<string[]>vscode.workspace.getConfiguration(explorerExcludedFilesKey).get('patterns');
 
 	if (!explorerExcludedFilesPatterns) {
 		userConfiguration[explorerExcludedFilesPatternsKey] = [ 'file://.gitignore' ];
@@ -228,47 +259,63 @@ function patchUserConfiguration() {
 		writeUserConfiguration(userConfiguration);
 	}
 
-	clearWorkspaceConfiguration();
+	clearWorkspaceConfiguration(workspaceFolder);
 
 	if (!rootPath) {
-		restart();
+		promiseResolver();
 		return;
 	}
 
-	patchWorkspaceConfiguration(explorerExcludedFilesPatterns);
+	patchWorkspaceConfiguration(workspaceFolder, explorerExcludedFilesPatterns);
 
-	restart();
+	promiseResolver();
 }
 
 function toggleExplorerExcludedFiles(show: boolean) {
-	const rootPath = getRootPath();
+	(vscode.workspace.workspaceFolders || []).forEach((workspaceFolder: vscode.WorkspaceFolder)  => {
+		if (!workspaceFolder || !workspaceFolder.uri) {
+			return;
+		}
 
-	if (!rootPath) {
-		return;
-	}
+		const rootPath = workspaceFolder.uri.fsPath;
 
-	const { json: workspaceConfiguration } = readWorkspaceConfiguration();
+		if (!rootPath) {
+			return;
+		}
 
-	if ((show && workspaceConfiguration[explorerExcludedFilesShowKey]) ||
-			(!show && !workspaceConfiguration[explorerExcludedFilesShowKey])) {
-		return;
-	}
+		const { json: workspaceConfiguration } = readWorkspaceConfiguration(workspaceFolder);
 
-	workspaceConfiguration[explorerExcludedFilesShowKey] = show;
+		if ((show && workspaceConfiguration[explorerExcludedFilesShowKey]) ||
+				(!show && !workspaceConfiguration[explorerExcludedFilesShowKey])) {
+			return;
+		}
 
-	writeWorkspaceConfiguration(workspaceConfiguration);
+		workspaceConfiguration[explorerExcludedFilesShowKey] = show;
+
+		writeWorkspaceConfiguration(workspaceFolder, workspaceConfiguration);
+	});
+}
+
+function onDidChangeWorkspaceFolders(event: vscode.WorkspaceFoldersChangeEvent) {
+	(event.removed || []).forEach(clearWorkspaceConfiguration);
 }
 
 export function activate(context: vscode.ExtensionContext) {
+	vscode.workspace.onDidChangeWorkspaceFolders(event => onDidChangeWorkspaceFolders(event));
+
 	start();
 
-	const commandShowProjectExcludedFiles = vscode.commands.registerCommand('extension.showExplorerExcludedFiles', () => toggleExplorerExcludedFiles(true));
+	const commandShowProjectExcludedFiles = vscode.commands.registerCommand(
+		'extension.showExplorerExcludedFiles',
+		() => toggleExplorerExcludedFiles(true));
 
-	const commandHideProjectExcludedFiles = vscode.commands.registerCommand('extension.hideExplorerExcludedFiles', () => toggleExplorerExcludedFiles(false));
+	const commandHideProjectExcludedFiles = vscode.commands.registerCommand(
+		'extension.hideExplorerExcludedFiles',
+		() => toggleExplorerExcludedFiles(false));
 
 	context.subscriptions.push(commandShowProjectExcludedFiles, commandHideProjectExcludedFiles);
 }
 
 export function deactivate(context: vscode.ExtensionContext) {
-	clearWorkspaceConfiguration();
+	clearWorkspaceConfigurations();
 }
