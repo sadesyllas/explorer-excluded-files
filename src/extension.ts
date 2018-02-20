@@ -11,6 +11,8 @@ const explorerExcludedFilesPatternsKey = 'explorerExcludedFiles.patterns';
 const explorerExcludedFilesShowKey = 'explorerExcludedFiles.show';
 const cycleDelay = 2500;
 
+let shuttingDown = false;
+
 function getCodeName() {
 	return `Code${/insider/i.test(vscode.version) ? ' - Insiders' : ''}`;
 }
@@ -136,15 +138,20 @@ function writeWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder, wo
 	writeUTF8(path.join(workspaceVSCodeDirectoryPath, 'settings.json'), JSONStringify(workspaceConfiguration));
 }
 
-function clearWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder) {
+function clearWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder, dontWrite = false) {
+	const emptyConfiguration = {
+		text: '{}',
+		json: {},
+	};
+
 	if (!workspaceFolder || !workspaceFolder.uri) {
-		return;
+		return emptyConfiguration;
 	}
 
 	const rootPath = workspaceFolder.uri.fsPath;
 
 	if (!rootPath) {
-		return;
+		return emptyConfiguration;
 	}
 
 	const { text: workspaceConfigurationText, json: workspaceConfiguration } = readWorkspaceConfiguration(workspaceFolder);
@@ -160,87 +167,55 @@ function clearWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder) {
 	}
 
 	if (workspaceConfiguration[explorerExcludedFilesShowKey]) {
-		if (!configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
+		if (!dontWrite && !configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
 			writeWorkspaceConfiguration(workspaceFolder, workspaceConfiguration);
 		}
 
-		return;
+		return {
+			json: workspaceConfiguration,
+			text: workspaceConfigurationText
+		};
 	}
 
 	const workspaceConfigurationKeys = Object.keys(workspaceConfiguration);
 
 	if (!workspaceConfigurationKeys.length ||
-			(workspaceConfigurationKeys.length === 1 &&
-			 typeof(workspaceConfiguration[explorerExcludedFilesShowKey]) !== 'undefined' &&
-			 !workspaceConfiguration[explorerExcludedFilesShowKey])) {
+		(workspaceConfigurationKeys.length === 1 &&
+			typeof (workspaceConfiguration[explorerExcludedFilesShowKey]) !== 'undefined' &&
+			!workspaceConfiguration[explorerExcludedFilesShowKey])
+	) {
 		const workspaceVSCodeDirectoryPath = path.join(rootPath, '.vscode');
 		const workspaceVSCodeDirectoryEntries = fs.existsSync(workspaceVSCodeDirectoryPath)
 			? fs.readdirSync(workspaceVSCodeDirectoryPath)
 			: [];
 
-		if (workspaceVSCodeDirectoryEntries.length === 1 && workspaceVSCodeDirectoryEntries[0] === 'settings.json') {
+		if (!dontWrite && workspaceVSCodeDirectoryEntries.length === 1 && workspaceVSCodeDirectoryEntries[0] === 'settings.json') {
 			fs.unlinkSync(path.join(workspaceVSCodeDirectoryPath, 'settings.json'));
 			fs.rmdirSync(workspaceVSCodeDirectoryPath);
 		}
 
-		return;
+		return {
+			json: workspaceConfiguration,
+			text: workspaceConfigurationText
+		};
 	}
 
-	if (!configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
+	if (!dontWrite && !configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
 		writeWorkspaceConfiguration(workspaceFolder, workspaceConfiguration);
 	}
+
+	return {
+		json: workspaceConfiguration,
+		text: workspaceConfigurationText
+	};
 }
 
 function clearWorkspaceConfigurations() {
 	(vscode.workspace.workspaceFolders || []).forEach(workspaceFolder => clearWorkspaceConfiguration(workspaceFolder));
 }
 
-function patchWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder, patterns: string[]) {
-	patterns = patterns || [];
-
-	if (!workspaceFolder || !workspaceFolder.uri) {
-		return;
-	}
-
-	const rootPath = workspaceFolder.uri.fsPath;
-
-	if (!rootPath) {
-		return;
-	}
-
-	const { text: workspaceConfigurationText, json: workspaceConfiguration } = readWorkspaceConfiguration(workspaceFolder);
-
-	if (workspaceConfiguration[explorerExcludedFilesShowKey]) {
-		return;
-	}
-
-	if (!workspaceConfiguration[filesExcludeKey]) {
-		workspaceConfiguration[filesExcludeKey] = {};
-	}
-
-	patterns.forEach(pattern => {
-		if (/^file:\/\//i.test(pattern)) {
-			const filePath = path.join(rootPath, pattern.replace(/^file:\/\//i, ''));
-			if (fs.existsSync(filePath)) {
-				readUTF8(filePath).split(/\r?\n/g).map(p => p.trim()).filter(p => !/^\s*$/.test(p) && p[0] !== '#')
-					.map(p => p.replace(/^\/+/, '')).filter(p => typeof(workspaceConfiguration[filesExcludeKey][p]) === 'undefined')
-					.forEach(p => workspaceConfiguration[filesExcludeKey][p] = 'explorerExcludedFiles');
-			}
-			return;
-		}
-
-		if (typeof(workspaceConfiguration[filesExcludeKey][pattern]) === 'undefined') {
-			workspaceConfiguration[filesExcludeKey][pattern] = 'explorerExcludedFiles';
-		}
-	});
-
-	if (!configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
-		writeWorkspaceConfiguration(workspaceFolder, workspaceConfiguration);
-	}
-}
-
 function patchUserConfiguration(workspaceFolder: vscode.WorkspaceFolder, promiseResolver: (value?: any) => void) {
-	if (!workspaceFolder || !workspaceFolder.uri) {
+	if (!workspaceFolder || !workspaceFolder.uri || shuttingDown) {
 		return;
 	}
 
@@ -259,14 +234,38 @@ function patchUserConfiguration(workspaceFolder: vscode.WorkspaceFolder, promise
 		writeUserConfiguration(userConfiguration);
 	}
 
-	clearWorkspaceConfiguration(workspaceFolder);
+	const { json: workspaceConfiguration, text: workspaceConfigurationText } = clearWorkspaceConfiguration(workspaceFolder, true);
 
 	if (!rootPath) {
 		promiseResolver();
 		return;
 	}
 
-	patchWorkspaceConfiguration(workspaceFolder, explorerExcludedFilesPatterns);
+	if (!workspaceConfiguration[explorerExcludedFilesShowKey]) {
+		if (!workspaceConfiguration[filesExcludeKey]) {
+			workspaceConfiguration[filesExcludeKey] = {};
+		}
+
+		explorerExcludedFilesPatterns.forEach(pattern => {
+			if (/^file:\/\//i.test(pattern)) {
+				const filePath = path.join(rootPath, pattern.replace(/^file:\/\//i, ''));
+				if (fs.existsSync(filePath)) {
+					readUTF8(filePath).split(/\r?\n/g).map(p => p.trim()).filter(p => !/^\s*$/.test(p) && p[0] !== '#')
+						.map(p => p.replace(/^\/+/, '')).filter(p => typeof (workspaceConfiguration[filesExcludeKey][p]) === 'undefined')
+						.forEach(p => workspaceConfiguration[filesExcludeKey][p] = 'explorerExcludedFiles');
+				}
+				return;
+			}
+
+			if (typeof (workspaceConfiguration[filesExcludeKey][pattern]) === 'undefined') {
+				workspaceConfiguration[filesExcludeKey][pattern] = 'explorerExcludedFiles';
+			}
+		});
+	}
+
+	if (!configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
+		writeWorkspaceConfiguration(workspaceFolder, workspaceConfiguration);
+	}
 
 	promiseResolver();
 }
@@ -297,7 +296,7 @@ function toggleExplorerExcludedFiles(show: boolean) {
 }
 
 function onDidChangeWorkspaceFolders(event: vscode.WorkspaceFoldersChangeEvent) {
-	(event.removed || []).forEach(clearWorkspaceConfiguration);
+	(event.removed || []).forEach(workspaceFolder => clearWorkspaceConfiguration(workspaceFolder));
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -317,5 +316,6 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate(context: vscode.ExtensionContext) {
+	shuttingDown = true;
 	clearWorkspaceConfigurations();
 }
