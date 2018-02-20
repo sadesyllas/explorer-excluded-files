@@ -1,3 +1,5 @@
+v1.0.1 - fix(app): prevent excessive writing of .vscode/settings.json
+
 v1.0.0 - fix(app): support multi-root workspaces
 
 v0.1.4 - fix(app): fix extension initialization workflow
