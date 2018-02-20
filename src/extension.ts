@@ -167,7 +167,7 @@ function clearWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder, do
 	}
 
 	if (workspaceConfiguration[explorerExcludedFilesShowKey]) {
-		if (!configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
+		if (!dontWrite && !configurationsAreIdentical(workspaceConfiguration, JSON.parse(workspaceConfigurationText))) {
 			writeWorkspaceConfiguration(workspaceFolder, workspaceConfiguration);
 		}
 
@@ -189,7 +189,7 @@ function clearWorkspaceConfiguration(workspaceFolder: vscode.WorkspaceFolder, do
 			? fs.readdirSync(workspaceVSCodeDirectoryPath)
 			: [];
 
-		if (workspaceVSCodeDirectoryEntries.length === 1 && workspaceVSCodeDirectoryEntries[0] === 'settings.json') {
+		if (!dontWrite && workspaceVSCodeDirectoryEntries.length === 1 && workspaceVSCodeDirectoryEntries[0] === 'settings.json') {
 			fs.unlinkSync(path.join(workspaceVSCodeDirectoryPath, 'settings.json'));
 			fs.rmdirSync(workspaceVSCodeDirectoryPath);
 		}
